@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZenTrack PWA</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        :root { --primary: #4A90E2; --bg: #F5F7FA; --card: #FFFFFF; --text: #333333; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; text-align: center; }
+        .container { max-width: 500px; margin: auto; }
+        .card { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .profile-img { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; background: #e0e0e0; display: block; margin: 0 auto 10px; cursor: pointer; }
+        input, select, button { width: 100%; padding: 10px; margin: 10px 0; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; }
+        button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { opacity: 0.9; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .stat-box { background: var(--bg); padding: 15px; border-radius: 8px; font-weight: bold; }
+        .rank-badge { font-size: 1.2em; color: var(--primary); padding: 10px; border: 2px dashed var(--primary); border-radius: 8px; display: inline-block; margin-top: 10px;}
+        #file-input { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="card">
+        <label for="file-input">
+            <img id="profile-pic" class="profile-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ccc'><path d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/></svg>" alt="Profile">
+        </label>
+        <input type="file" id="file-input" accept="image/*">
+        <input type="text" id="name-input" placeholder="Enter your name..." onblur="saveProfile()">
+        <div class="rank-badge" id="rank-display">Rank: Novice</div>
+    </div>
+
+    <div class="card">
+        <h3>Log Meditation</h3>
+        <select id="med-type">
+            <option value="Sitting">Sitting Meditation</option>
+            <option value="Walking">Walking Meditation</option>
+        </select>
+        <input type="number" id="med-duration" placeholder="Duration in minutes..." min="1">
+        <button onclick="logSession()">Add Session</button>
+    </div>
+
+    <div class="card">
+        <h3>Your Stats</h3>
+        <div class="stats-grid">
+            <div class="stat-box">Weekly<br><span id="stat-week">0</span> mins</div>
+            <div class="stat-box">Monthly<br><span id="stat-month">0</span> mins</div>
+            <div class="stat-box" style="grid-column: span 2;">All-Time: <span id="stat-all">0</span> mins</div>
+        </div>
+    </div>
+
+    <button onclick="exportCSV()" style="background: #27ae60;">Download Excel (CSV) Record</button>
+</div>
+
+<script>
+    let logs = JSON.parse(localStorage.getItem('meditationLogs')) || [];
+
+    document.getElementById('name-input').value = localStorage.getItem('medName') || '';
+    const savedPic = localStorage.getItem('medPic');
+    if (savedPic) document.getElementById('profile-pic').src = savedPic;
+
+    document.getElementById('file-input').addEventListener('change', function(e) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            document.getElementById('profile-pic').src = event.target.result;
+            localStorage.setItem('medPic', event.target.result);
+        };
+        reader.readAsDataURL(e.target.files[0]);
+    });
+
+    function saveProfile() {
+        localStorage.setItem('medName', document.getElementById('name-input').value);
+    }
+
+    function logSession() {
+        const type = document.getElementById('med-type').value;
+        const duration = parseInt(document.getElementById('med-duration').value);
+        if (!duration || duration <= 0) return alert("Enter a valid duration!");
+        
+        logs.push({ type, duration, date: new Date().toISOString() });
+        localStorage.setItem('meditationLogs', JSON.stringify(logs));
+        document.getElementById('med-duration').value = '';
+        updateStats();
+    }
+
+    function updateStats() {
+        const now = new Date();
+        const oneWeekAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+        const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+
+        let weekly = 0, monthly = 0, allTime = 0;
+
+        logs.forEach(log => {
+            const logDate = new Date(log.date);
+            allTime += log.duration;
+            if (logDate >= oneWeekAgo) weekly += log.duration;
+            if (logDate >= oneMonthAgo) monthly += log.duration;
+        });
+
+        document.getElementById('stat-week').innerText = weekly;
+        document.getElementById('stat-month').innerText = monthly;
+        document.getElementById('stat-all').innerText = allTime;
+
+        const dailyAvg = weekly / 7;
+        let rank = "Novice";
+        if (dailyAvg >= 120) rank = "Zen Pro (2+ hrs/day)";
+        else if (dailyAvg >= 60) rank = "Master (1+ hr/day)";
+        else if (dailyAvg >= 30) rank = "Advanced (30+ mins/day)";
+        else if (dailyAvg >= 10) rank = "Practitioner (10+ mins/day)";
+
+        document.getElementById('rank-display').innerText = `Rank: ${rank}`;
+    }
+
+    function exportCSV() {
+        if (logs.length === 0) return alert("No data to export!");
+        let csvContent = "data:text/csv;charset=utf-8,Date,Type,Duration(Minutes)\n";
+        logs.forEach(log => {
+            const dateStr = new Date(log.date).toLocaleDateString();
+            csvContent += `${dateStr},${log.type},${log.duration}\n`;
+        });
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "Meditation_Logs.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+    }
+
+    updateStats();
+</script>
+</body>
+</html>
